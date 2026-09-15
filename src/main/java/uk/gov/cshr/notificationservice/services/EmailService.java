@@ -30,17 +30,34 @@ public class EmailService {
     private final EmailTemplatesRepository emailTemplatesRepository;
 
     public SendEmailResponse send(TemplatedMessageDto message) {
-        try {
-            SendEmailResponse response = client.sendEmail(
-                    message.getTemplateId(),
-                    message.getRecipient(),
-                    message.getPersonalisation(),
-                    message.getReference()
-            );
-            log.info("Notify email with ID {} and content \n{}\n has been sent", response.getNotificationId(), response.getBody());
-            return response;
-        } catch (NotificationClientException e) {
-            throw new NotificationServiceException("Unable to send message", e);
+        int attempt = 0;
+        int[] attemptDelaysInMilliseconds = {0, 1000, 2000, 4000};
+
+        while (true) {
+            log.debug("Attempt #{} to send email. Sending in {} milliseconds.", attempt+1, attemptDelaysInMilliseconds[attempt]);
+            try {
+                Thread.sleep(attemptDelaysInMilliseconds[attempt]);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+
+            try {
+                SendEmailResponse response = client.sendEmail(
+                        message.getTemplateId(),
+                        message.getRecipient(),
+                        message.getPersonalisation(),
+                        message.getReference()
+                );
+                log.info("Notify email with ID {} and content \n{}\n has been sent", response.getNotificationId(), response.getBody());
+                return response;
+            } catch (NotificationClientException e) {
+                log.debug("Attempt failed. Reason: {}", e.getMessage());
+                attempt++;
+
+                if(attempt == attemptDelaysInMilliseconds.length) {
+                    throw new NotificationServiceException("Unable to send message", e);
+                }
+            }
         }
     }
 
